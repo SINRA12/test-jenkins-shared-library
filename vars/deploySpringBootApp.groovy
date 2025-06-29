@@ -39,7 +39,7 @@ def call(Map config) {
 
                     echo "Starting new application in background..."
                     sh """
-                        nohup java -jar target/${jar} > app.log 2>&1 &
+                        nohup java -jar target/${jar} --server.port=8081 --server.address=0.0.0.0 > app.log 2>&1 &
                         sleep 5
                     """
 
