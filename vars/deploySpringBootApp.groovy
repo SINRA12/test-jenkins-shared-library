@@ -72,9 +72,9 @@ EOF'
 
                     echo "Checking health endpoint..."
                     sh """
-                        for i in {1..10}; do
+                        for i in {1..20}; do
                             echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
-                            curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 3
+                            curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 10
                         done
 
                         # Final check — fail pipeline if health check fails
@@ -87,7 +87,7 @@ EOF'
         post {
             failure {
                 echo "❌ Deployment failed. Last 20 lines of log:"
-                sh 'sudo journalctl -u ${serviceName} -n 20 || true'
+                sh "sudo -S journalctl -u ${serviceName} -n 20 <<< '' || true"
             }
             success {
                 echo "✅ Spring Boot application deployed successfully!"
