@@ -2,6 +2,7 @@ def call(Map config) {
     def jar = config.jarName
     def port = config.port ?: 8080
     def healthEndpoint = config.healthCheck ?: "/actuator/health"
+    def serviceName = config.serviceName
 
     pipeline {
         agent any  // Run the initial stages on controller or default agent
@@ -18,37 +19,62 @@ def call(Map config) {
             stage('Build JAR') {
                 steps {
                     echo "Building the Spring Boot application"
-                    sh 'mvn clean package -DskipTests'
+                    sh "mvn clean package -DskipTests"
                     stash name: 'built-jar', includes: "target/${jar}"
                 }
             }
 
             stage('Deploy on Spring Deployer Agent') {
                 agent { label 'spring-deployer' }
-
                 steps {
                     echo "Unstashing and deploying JAR on spring-deployer agent"
                     unstash 'built-jar'
 
                     echo "Stopping any existing application..."
                     sh """
-                        set +e
-                        pkill -f ${jar}
-                        set -e
+                        sudo systemctl stop ${serviceName} || true
                     """
 
-                    echo "Starting new application in background..."
+                    echo "Creating /opt/${serviceName} directory and copying jar"
                     sh """
-                        nohup java -jar ${jar} --server.port=${port} --server.address=0.0.0.0 > app.log 2>&1 < /dev/null &
-                        echo \$! > app.pid
-                        sleep 5
+                        sudo mkdir -p /opt/${serviceName}
+                        sudo cp target/${jar} /opt/${serviceName}/
+                    """
+
+                    echo "Creating dynamic systemd service unit"
+                    sh """
+                        sudo bash -c 'cat > /etc/systemd/system/${serviceName}.service <<EOF
+[Unit]
+Description=Spring Boot Jenkins App
+After=network.target
+
+[Service]
+User=jenkins
+WorkingDirectory=/opt/${serviceName}
+ExecStart=/usr/bin/java -jar ${jar} --server.port=${port} --server.address=0.0.0.0
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+                    """
+
+                    echo "Reloading systemd and starting service"
+                    sh """
+                        sudo systemctl daemon-reload
+                        sudo systemctl start ${serviceName}
+                        sudo systemctl enable ${serviceName}
                     """
 
                     echo "Checking health endpoint..."
                     sh """
                         for i in {1..10}; do
-                          echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
-                          curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 3
+                            echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
+                            curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 3
                         done
 
                         # Final check — fail pipeline if health check fails
@@ -61,7 +87,7 @@ def call(Map config) {
         post {
             failure {
                 echo "❌ Deployment failed. Last 20 lines of log:"
-                sh 'tail -n 20 app.log || true'
+                sh 'sudo journalctl -u ${serviceName} -n 20 || true'
             }
             success {
                 echo "✅ Spring Boot application deployed successfully!"
