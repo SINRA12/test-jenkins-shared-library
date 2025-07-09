@@ -58,7 +58,9 @@ def call(Map config) {
                         sh """
                             # Login to Docker Hub
                             echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-
+                        
+                            whoami
+                        
                             # Pull the Docker image from Docker Hub
                             docker pull ${env.DOCKER_IMAGE_TAG}
 
