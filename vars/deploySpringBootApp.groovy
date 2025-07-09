@@ -3,6 +3,7 @@ def call(Map config) {
     def port = config.port ?: 8080
     def healthEndpoint = config.healthCheck ?: "/actuator/health"
     def serviceName = config.serviceName
+    def imageName = config.imageName   // e.g., myrepo/myapp
 
     pipeline {
         agent any  // Run the initial stages on controller or default agent
@@ -20,64 +21,53 @@ def call(Map config) {
                 steps {
                     echo "Building the Spring Boot application"
                     sh "mvn clean package -DskipTests"
+                    // Stash the JAR for later use
                     stash name: 'built-jar', includes: "target/${jar}"
                 }
             }
 
-            stage('Deploy on Spring Deployer Agent') {
-                agent { label 'spring-deployer' }
+            stage('Build Docker Image') {
+                agent { label 'docker-builder' }  // Use the Docker VM for building
                 steps {
-                    echo "Unstashing and deploying JAR on spring-deployer agent"
-                    unstash 'built-jar'
+                    echo "Building the Docker image using the existing Dockerfile"
 
-                    echo "Stopping any existing application..."
+                    script {
+                        def tag = "${imageName}:${env.BUILD_NUMBER}"
+
+                        // Pass the jarName and port as build arguments
+                        sh """
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                            docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
+                            docker push ${tag}
+                        """
+                    }
+                    env.DOCKER_IMAGE_TAG = tag  // Store the image tag for deployment
+                }
+            }
+
+            stage('Deploy on App VM') {
+                agent { label 'app-deployer' }  // Use the app-deployer agent (which already has SSH access)
+                steps {
+                    echo "Deploying Docker container on  App server"
+
+                    // No need for sshagent, since the agent already has SSH access
                     sh """
-                        sudo systemctl stop ${serviceName} || true
+                        docker pull ${env.DOCKER_IMAGE_TAG}
+                        docker rm -f ${serviceName} || true
+                        docker run -d --name ${serviceName} -p ${port}:${port} \\
+                            ${env.DOCKER_IMAGE_TAG}
                     """
+                }
+            }
 
-                    echo "Creating /opt/${serviceName} directory and copying jar"
-                    sh """
-                        sudo mkdir -p /opt/${serviceName}
-                        sudo cp target/${jar} /opt/${serviceName}/
-                    """
-
-                    echo "Creating dynamic systemd service unit"
-                    sh """
-                        sudo bash -c 'cat > /etc/systemd/system/${serviceName}.service <<EOF
-[Unit]
-Description=Spring Boot Jenkins App
-After=network.target
-
-[Service]
-User=jenkins
-WorkingDirectory=/opt/${serviceName}
-ExecStart=/usr/bin/java -jar ${jar} --server.port=${port} --server.address=0.0.0.0
-SuccessExitStatus=143
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF'
-                    """
-
-                    echo "Reloading systemd and starting service"
-                    sh """
-                        sudo systemctl daemon-reload
-                        sudo systemctl start ${serviceName}
-                        sudo systemctl enable ${serviceName}
-                    """
-
-                    echo "Checking health endpoint..."
+            stage('Health Check') {
+                steps {
+                    echo "Checking Docker container health on app host..."
                     sh """
                         for i in {1..20}; do
                             echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
                             curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 10
                         done
-
-                        # Final check — fail pipeline if health check fails
                         curl -sSf http://localhost:${port}${healthEndpoint}
                     """
                 }
@@ -86,11 +76,11 @@ EOF'
 
         post {
             failure {
-                echo "❌ Deployment failed. Last 20 lines of log:"
-                sh "sudo -S journalctl -u ${serviceName} -n 20 <<< '' || true"
+                echo "❌ Deployment failed. Checking Docker logs..."
+                sh "docker logs ${serviceName} --tail 20 || true"
             }
             success {
-                echo "✅ Spring Boot application deployed successfully!"
+                echo "✅ Docker-based Spring Boot application deployed successfully!"
             }
         }
     }
