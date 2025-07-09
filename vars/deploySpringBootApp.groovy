@@ -33,7 +33,8 @@ def call(Map config) {
 
                     script {
                         def tag = "${imageName}:${env.BUILD_NUMBER}"
-
+                         // Unstash the JAR file to ensure it's available for the Docker build
+                        unstash 'built-jar'
                         // Use the Jenkins credentials for Docker Hub login (Access Token)
                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh """
