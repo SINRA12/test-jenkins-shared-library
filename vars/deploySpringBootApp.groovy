@@ -49,7 +49,7 @@ def call(Map config) {
             }
 
             stage('Deploy on App VM') {
-                agent { label 'app-deployer' }  // Use the app-deployer agent (which already has SSH access)
+                agent { label 'spring-deploy-agent' }  // Use the app-deployer agent (which already has SSH access)
                 steps {
                     echo "Deploying Docker container on App server"
 
