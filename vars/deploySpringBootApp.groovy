@@ -35,38 +35,40 @@ def call(Map config) {
                         def tag = "${imageName}:${env.BUILD_NUMBER}"
 
                         // Use the Jenkins credentials for Docker Hub login (Access Token)
-                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                           sh """
-                              echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                              docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
-                              docker push ${tag}
-                             """
+                        withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                                docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
+                                docker push ${tag}
+                            """
+                        }
+                        env.DOCKER_IMAGE_TAG = tag  // Store the image tag for deployment
                     }
-                    env.DOCKER_IMAGE_TAG = tag  // Store the image tag for deployment
                 }
             }
 
             stage('Deploy on App VM') {
                 agent { label 'app-deployer' }  // Use the app-deployer agent (which already has SSH access)
                 steps {
-                    echo "Deploying Docker container on  App server"
+                    echo "Deploying Docker container on App server"
 
                     // No need for sshagent, since the agent already has SSH access
-                   withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                     sh """
-                        # Login to Docker Hub
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            # Login to Docker Hub
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
 
-                        # Pull the Docker image from Docker Hub
-                        docker pull ${env.DOCKER_IMAGE_TAG}
+                            # Pull the Docker image from Docker Hub
+                            docker pull ${env.DOCKER_IMAGE_TAG}
 
-                        # Remove the existing container if it exists
-                        docker rm -f ${serviceName} || true
+                            # Remove the existing container if it exists
+                            docker rm -f ${serviceName} || true
 
-                        # Run the new Docker container
-                        docker run -d --name ${serviceName} -p ${port}:${port} \\
-                        ${env.DOCKER_IMAGE_TAG}
-                      """
+                            # Run the new Docker container
+                            docker run -d --name ${serviceName} -p ${port}:${port} \\
+                                ${env.DOCKER_IMAGE_TAG}
+                        """
+                    }
                 }
             }
 
