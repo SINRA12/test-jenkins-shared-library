@@ -34,12 +34,13 @@ def call(Map config) {
                     script {
                         def tag = "${imageName}:${env.BUILD_NUMBER}"
 
-                        // Pass the jarName and port as build arguments
-                        sh """
-                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                            docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
-                            docker push ${tag}
-                        """
+                        // Use the Jenkins credentials for Docker Hub login (Access Token)
+                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                           sh """
+                              echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                              docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
+                              docker push ${tag}
+                             """
                     }
                     env.DOCKER_IMAGE_TAG = tag  // Store the image tag for deployment
                 }
@@ -51,12 +52,21 @@ def call(Map config) {
                     echo "Deploying Docker container on  App server"
 
                     // No need for sshagent, since the agent already has SSH access
-                    sh """
+                   withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                     sh """
+                        # Login to Docker Hub
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+
+                        # Pull the Docker image from Docker Hub
                         docker pull ${env.DOCKER_IMAGE_TAG}
+
+                        # Remove the existing container if it exists
                         docker rm -f ${serviceName} || true
+
+                        # Run the new Docker container
                         docker run -d --name ${serviceName} -p ${port}:${port} \\
-                            ${env.DOCKER_IMAGE_TAG}
-                    """
+                        ${env.DOCKER_IMAGE_TAG}
+                      """
                 }
             }
 
