@@ -75,19 +75,22 @@ def call(Map config) {
                 }
             }
 
-            stage('Health Check') {
-                steps {
-                    echo "Checking Docker container health on app host..."
-                    sh """
-                        for i in {1..20}; do
-                            echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
-                            curl -sSf http://localhost:${port}${healthEndpoint} && break || sleep 10
-                        done
-                        curl -sSf http://localhost:${port}${healthEndpoint}
-                    """
-                }
-            }
-        }
+           stage('Health Check') {
+             steps {
+                  echo "Checking Docker container health on app host..."
+                  sh """
+                       for i in {1..20}; do
+                         echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
+                         status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://localhost:${port}${healthEndpoint})
+                         echo "Status: \$status_code"
+                         if [ "\$status_code" = "200" ] || [ "\$status_code" = "403" ] || [ "\$status_code" = "401" ]; then
+                           break
+                         fi
+                         sleep 10
+                       done
+                     """
+                   }
+           }
 
         post {
             failure {
