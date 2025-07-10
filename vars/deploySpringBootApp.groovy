@@ -90,6 +90,7 @@ def call(Map config) {
                        done
                      """
                    }
+               }
            }
 
         post {
