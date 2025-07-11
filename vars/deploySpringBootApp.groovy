@@ -4,38 +4,40 @@ def call(Map config) {
     def healthEndpoint = config.healthCheck ?: "/actuator/health"
     def serviceName = config.serviceName
     def imageName = config.imageName   // e.g., myrepo/myapp
+    def useExistingTag = params.EXISTING_IMAGE_TAG != '-- Build from Source --'
 
     pipeline {
-        agent any  // Run the initial stages on controller or default agent
+        agent any
 
         stages {
             stage('Checkout') {
+                when { expression { !useExistingTag } }  // Only when building from source
                 steps {
-                    echo "Checking out the code from Git"
+                    echo "📦 Checking out code"
                     deleteDir()
                     checkout scm
                 }
             }
 
             stage('Build JAR') {
+                when { expression { !useExistingTag } }
                 steps {
-                    echo "Building the Spring Boot application"
+                    echo "🔧 Building JAR..."
                     sh "mvn clean package -DskipTests"
-                    // Stash the JAR for later use
                     stash name: 'built-jar', includes: "target/${jar}"
                 }
             }
 
             stage('Build Docker Image') {
-                agent { label 'docker-builder' }  // Use the Docker VM for building
+                when { expression { !useExistingTag } }
+                agent { label 'docker-builder' }
                 steps {
-                    echo "Building the Docker image using the existing Dockerfile"
+                    echo "🐳 Building Docker image from source..."
 
                     script {
                         def tag = "${imageName}:${env.BUILD_NUMBER}"
-                         // Unstash the JAR file to ensure it's available for the Docker build
                         unstash 'built-jar'
-                        // Use the Jenkins credentials for Docker Hub login (Access Token)
+
                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh """
                                 echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
@@ -43,63 +45,64 @@ def call(Map config) {
                                 docker push ${tag}
                             """
                         }
-                        env.DOCKER_IMAGE_TAG = tag  // Store the image tag for deployment
+
+                        env.DOCKER_IMAGE_TAG = tag
                     }
                 }
             }
 
             stage('Deploy on App VM') {
-                agent { label 'spring-deploy-agent' }  // Use the app-deployer agent (which already has SSH access)
+                agent { label 'spring-deploy-agent' }
                 steps {
-                    echo "Deploying Docker container on App server"
+                    echo "🚀 Deploying to App VM..."
 
-                    // No need for sshagent, since the agent already has SSH access
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            # Login to Docker Hub
-                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        
-                            whoami
-                        
-                            # Pull the Docker image from Docker Hub
-                            docker pull ${env.DOCKER_IMAGE_TAG}
+                    script {
+                        def imageTag = useExistingTag ? "${imageName}:${params.EXISTING_IMAGE_TAG}" : env.DOCKER_IMAGE_TAG
 
-                            # Remove the existing container if it exists
-                            docker rm -f ${serviceName} || true
+                        withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
 
-                            # Run the new Docker container
-                            docker run -d --name ${serviceName} -p ${port}:${port} \\
-                                ${env.DOCKER_IMAGE_TAG}
-                        """
+                                echo "🔄 Pulling image: ${imageTag}"
+                                docker pull ${imageTag}
+
+                                echo "🧹 Cleaning up old container (if any)..."
+                                docker rm -f ${serviceName} || true
+
+                                echo "🚀 Running container..."
+                                docker run -d --name ${serviceName} -p ${port}:${port} ${imageTag}
+                            """
+                        }
                     }
                 }
             }
 
-           stage('Health Check') {
-             steps {
-                  echo "Checking Docker container health on app host..."
-                  sh """
-                       for i in {1..20}; do
-                         echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
-                         status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://localhost:${port}${healthEndpoint})
-                         echo "Status: \$status_code"
-                         if [ "\$status_code" = "200" ] || [ "\$status_code" = "403" ] || [ "\$status_code" = "401" ]; then
-                           break
-                         fi
-                         sleep 10
-                       done
-                     """
-                   }
-               }
-           }
+            stage('Health Check') {
+                steps {
+                    echo "🔍 Checking health endpoint..."
+
+                    sh """
+                        for i in {1..20}; do
+                            echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
+                            status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://localhost:${port}${healthEndpoint})
+                            echo "Status: \$status_code"
+                            if [ "\$status_code" = "200" ] || [ "\$status_code" = "403" ] || [ "\$status_code" = "401" ]; then
+                                break
+                            fi
+                            sleep 10
+                        done
+                    """
+                }
+            }
+        }
 
         post {
             failure {
-                echo "❌ Deployment failed. Checking Docker logs..."
+                echo "❌ Deployment failed. Fetching container logs..."
                 sh "docker logs ${serviceName} --tail 20 || true"
             }
             success {
-                echo "✅ Docker-based Spring Boot application deployed successfully!"
+                echo "✅ Application deployed successfully!"
             }
         }
     }
