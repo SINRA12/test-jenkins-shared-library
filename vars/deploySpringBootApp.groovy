@@ -3,15 +3,17 @@ def call(Map config) {
     def port = config.port ?: 8080
     def healthEndpoint = config.healthCheck ?: "/actuator/health"
     def serviceName = config.serviceName
-    def imageName = config.imageName   // e.g., myrepo/myapp
+    def imageName = config.imageName
     def useExistingTag = params.EXISTING_IMAGE_TAG != '-- Build from Source --'
+    def rollback = params.ROLLBACK ?: false
+    def remoteHistoryFile = "/opt/deployment-history/${serviceName}.tag"
 
     pipeline {
         agent any
 
         stages {
             stage('Checkout') {
-                when { expression { !useExistingTag } }  // Only when building from source
+                when { expression { !useExistingTag && !rollback } }
                 steps {
                     echo "📦 Checking out code"
                     deleteDir()
@@ -20,7 +22,7 @@ def call(Map config) {
             }
 
             stage('Build JAR') {
-                when { expression { !useExistingTag } }
+                when { expression { !useExistingTag && !rollback } }
                 steps {
                     echo "🔧 Building JAR..."
                     sh "mvn clean package -DskipTests"
@@ -29,18 +31,17 @@ def call(Map config) {
             }
 
             stage('Build Docker Image') {
-                when { expression { !useExistingTag } }
+                when { expression { !useExistingTag && !rollback } }
                 agent { label 'docker-builder' }
                 steps {
                     echo "🐳 Building Docker image from source..."
-
                     script {
                         def tag = "${imageName}:${env.BUILD_NUMBER}"
                         unstash 'built-jar'
 
                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh """
-                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                                echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
                                 docker build --build-arg jar=${jar} --build-arg port=${port} -t ${tag} .
                                 docker push ${tag}
                             """
@@ -55,23 +56,33 @@ def call(Map config) {
                 agent { label 'spring-deploy-agent' }
                 steps {
                     echo "🚀 Deploying to App VM..."
-
                     script {
-                        def imageTag = useExistingTag ? "${imageName}:${params.EXISTING_IMAGE_TAG}" : env.DOCKER_IMAGE_TAG
+                        def imageTag
+
+                        if (rollback) {
+                            echo "🔁 Rollback enabled. Reading previous deployed image from ${remoteHistoryFile}"
+                            imageTag = sh(script: "cat ${remoteHistoryFile}", returnStdout: true).trim()
+                        } else {
+                            imageTag = useExistingTag
+                                ? "${imageName}:${params.EXISTING_IMAGE_TAG}"
+                                : env.DOCKER_IMAGE_TAG
+                        }
 
                         withCredentials([usernamePassword(credentialsId: 'docker-hub-token', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh """
-                                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-
-                                echo "🔄 Pulling image: ${imageTag}"
+                                echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
                                 docker pull ${imageTag}
-
-                                echo "🧹 Cleaning up old container (if any)..."
                                 docker rm -f ${serviceName} || true
-
-                                echo "🚀 Running container..."
                                 docker run -d --name ${serviceName} -p ${port}:${port} ${imageTag}
                             """
+
+                            // Store current deployed image tag if it's not a rollback
+                            if (!rollback) {
+                                sh """
+                                    mkdir -p /opt/deployment-history
+                                    echo '${imageTag}' > ${remoteHistoryFile}
+                                """
+                            }
                         }
                     }
                 }
@@ -80,7 +91,6 @@ def call(Map config) {
             stage('Health Check') {
                 steps {
                     echo "🔍 Checking health endpoint..."
-
                     sh """
                         for i in {1..20}; do
                             echo "Attempt \$i: http://localhost:${port}${healthEndpoint}"
