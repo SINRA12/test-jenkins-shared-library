@@ -5,15 +5,15 @@ def call(Map config) {
     def serviceName = config.serviceName
     def imageName = config.imageName
     def useExistingTag = params.EXISTING_IMAGE_TAG != '-- Build from Source --'
-    def rollback = params.ROLLBACK ?: false
     def remoteHistoryFile = "/opt/deployment-history/${serviceName}.tag"
+    
     pipeline {
         agent any
         stages {
             stage('Checkout') {
                 when {
                     expression {
-                        !useExistingTag && !rollback
+                        !useExistingTag
                     }
                 }
                 steps {
@@ -25,7 +25,7 @@ def call(Map config) {
             stage('Build JAR') {
                 when {
                     expression {
-                        !useExistingTag && !rollback
+                        !useExistingTag
                     }
                 }
                 steps {
@@ -37,7 +37,7 @@ def call(Map config) {
             stage('Build Docker Image') {
                 when {
                     expression {
-                        !useExistingTag && !rollback
+                        !useExistingTag
                     }
                 }
                 agent {
@@ -90,7 +90,7 @@ def call(Map config) {
                             if (externalIP) {
                                 break
                             }
-                                            sleep 10
+                            sleep 10
                         }
                         echo "✅ External IP: ${externalIP}"
                         sh """
