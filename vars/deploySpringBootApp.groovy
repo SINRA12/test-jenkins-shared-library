@@ -66,9 +66,9 @@ def call(Map config) {
                     }
                 }
                 steps {
-                    echo "📦 Using existing image: ${params.EXISTING_IMAGE_TAG}"
+                    echo "📦 Using existing image: ${imageName}:${params.EXISTING_IMAGE_TAG}"
                     script {
-                        env.DOCKER_IMAGE_TAG = params.EXISTING_IMAGE_TAG  // Set the existing image tag
+                         env.DOCKER_IMAGE_TAG = "${imageName}:${params.EXISTING_IMAGE_TAG}"  // Set the full image tag
                     }
                 }
             }
