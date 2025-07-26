@@ -13,7 +13,7 @@ def call(Map config) {
             stage('Checkout') {
                 when {
                     expression {
-                        !useExistingTag
+                        !useExistingTag  // Only checkout code if building from source
                     }
                 }
                 steps {
@@ -25,7 +25,7 @@ def call(Map config) {
             stage('Build JAR') {
                 when {
                     expression {
-                        !useExistingTag
+                        !useExistingTag  // Only build the JAR if building from source
                     }
                 }
                 steps {
@@ -37,7 +37,7 @@ def call(Map config) {
             stage('Build Docker Image') {
                 when {
                     expression {
-                        !useExistingTag
+                        !useExistingTag  // Only build Docker image if building from source
                     }
                 }
                 agent {
@@ -59,22 +59,35 @@ def call(Map config) {
                     }
                 }
             }
+            stage('Use Existing Image') {
+                when {
+                    expression {
+                        useExistingTag  // If using an existing image, set the tag
+                    }
+                }
+                steps {
+                    echo "📦 Using existing image: ${params.EXISTING_IMAGE_TAG}"
+                    script {
+                        env.DOCKER_IMAGE_TAG = params.EXISTING_IMAGE_TAG  // Set the existing image tag
+                    }
+                }
+            }
             stage('Deploy to GKE') {
                 steps {
                     script {
                         def imageTag = env.DOCKER_IMAGE_TAG
                         // Get cluster credentials
                         sh """
-                gcloud container clusters get-credentials bisht-k8-cluster --region asia-south1 --project peerless-clock-464403-s3
-            """
-                        // Replace image in repo YAML
+                            gcloud container clusters get-credentials bisht-k8-cluster --region asia-south1 --project peerless-clock-464403-s3
+                        """
+                        // Replace image in repo YAML with the correct image tag (new or existing)
                         sh """
-                sed 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml > k8s/k8s-deployment-updated.yaml
-            """
+                            sed 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml > k8s/k8s-deployment-updated.yaml
+                        """
                         // Apply updated manifest
                         sh """
-                kubectl apply -f k8s/k8s-deployment-updated.yaml
-            """
+                            kubectl apply -f k8s/k8s-deployment-updated.yaml
+                        """
                         // Rollout check
                         sh "kubectl rollout status deployment/jenkin-app --timeout=120s"
                     }
@@ -94,16 +107,16 @@ def call(Map config) {
                         }
                         echo "✅ External IP: ${externalIP}"
                         sh """
-                for i in {1..20}; do
-                    echo "Attempt \$i: http://${externalIP}/api"
-                    status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api)
-                    echo "Status: \$status_code"
-                    if [ "\$status_code" = "200" ]; then
-                        break
-                    fi
-                    sleep 10
-                done
-            """
+                            for i in {1..20}; do
+                                echo "Attempt \$i: http://${externalIP}/api"
+                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api)
+                                echo "Status: \$status_code"
+                                if [ "\$status_code" = "200" ]; then
+                                    break
+                                fi
+                                sleep 10
+                            done
+                        """
                     }
                 }
             }
