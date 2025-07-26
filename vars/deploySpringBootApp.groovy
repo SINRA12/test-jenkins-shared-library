@@ -108,11 +108,14 @@ def call(Map config) {
                         echo "✅ External IP: ${externalIP}"
                         sh """
                             for i in {1..20}; do
-                                echo "Attempt \$i: http://${externalIP}/api"
+                                echo "Attempt \$i: http://${externalIP}/api1"
                                 status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api1)
                                 echo "Status: \$status_code"
                                 if [ "\$status_code" = "200" ]; then
                                     break
+                                elif [ "\$status_code" = "404" ]; then
+                                    echo "❌ Error: Status code 404 received, failing the build."
+                                    error "Health check failed with status code 404."
                                 fi
                                 sleep 10
                             done
