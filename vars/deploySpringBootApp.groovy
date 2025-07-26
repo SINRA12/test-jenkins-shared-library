@@ -109,7 +109,7 @@ def call(Map config) {
                         sh """
                             for i in {1..20}; do
                                 echo "Attempt \$i: http://${externalIP}/api"
-                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api)
+                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api1)
                                 echo "Status: \$status_code"
                                 if [ "\$status_code" = "200" ]; then
                                     break
@@ -123,8 +123,9 @@ def call(Map config) {
         }
         post {
             failure {
-                echo "❌ Deployment failed. Fetching container logs..."
-                sh "docker logs ${serviceName} --tail 20 || true"
+                echo "❌ Deployment failed. Rolling back to previous version..."
+                // Rollback to the previous deployment version using Kubernetes inbuilt rollback
+                sh "kubectl rollout undo deployment/jenkin-app --timeout=120s"
             }
             success {
                 echo "✅ Application deployed successfully!"
