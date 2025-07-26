@@ -124,15 +124,19 @@ def call(Map config) {
                 }
             }
         }
-        post {
-            failure {
-                echo "❌ Deployment failed. Rolling back to previous version..."
-                // Rollback to the previous deployment version using Kubernetes inbuilt rollback
-                sh "kubectl rollout undo deployment/jenkin-app --timeout=120s"
-            }
-            success {
-                echo "✅ Application deployed successfully!"
-            }
-        }
+       post {
+           failure {
+              echo "❌ Deployment failed. Rolling back to previous version..."
+        
+              // Trigger the rollback
+              sh "kubectl rollout undo deployment/jenkin-app"
+        
+             // Wait for the rollback to complete
+             sh "kubectl rollout status deployment/jenkin-app --timeout=120s"
+         }
+         success {
+             echo "✅ Application deployed successfully!"
+         }
+      }
     }
 }
