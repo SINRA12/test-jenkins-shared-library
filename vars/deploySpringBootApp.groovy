@@ -90,7 +90,7 @@ def call(Map config) {
                         git config --global user.email "jenkins@example.com"
                         git add k8s/k8s-deployment.yaml
                         git commit -m "Updated Docker image tag to ${imageTag}"
-                        git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/your-username/your-repo.git HEAD:main
+                        git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/SINRA12/testJenkinDeplymentK8.git HEAD:main
                     """
                        }
                     }
