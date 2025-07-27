@@ -73,8 +73,6 @@ def call(Map config) {
                         def imageTag = env.DOCKER_IMAGE_TAG
                         echo "Updating Git repository with new image tag: ${imageTag}"
                         
-                        // Ensure you're on the correct branch (e.g., 'main')
-                        sh 'git checkout main'  // Replace 'main' with your target branch
                         
                         // Update the k8s YAML with the new image tag
                         sh """
