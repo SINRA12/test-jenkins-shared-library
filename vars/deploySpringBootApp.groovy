@@ -82,15 +82,14 @@ def call(Map config) {
                         sh """
                             sed -i 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml
                         """
-                         // Ensure GitHub's SSH key is trusted
-                         sh 'mkdir -p ~/.ssh'
-                         sh 'ssh-keyscan github.com >> ~/.ssh/known_hosts'
+                        
                         // Commit and push the changes to the Git repository using SSH
                          // Commit and push the changes to the Git repository
                          withCredentials([sshUserPrivateKey(credentialsId: 'github-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                         sh """
                           git config --global user.name "jenkins"
                           git config --global user.email "jenkins@example.com"
+                          git status
                           git add k8s/k8s-deployment.yaml
                           git commit -m "Updated Docker image tag to ${imageTag}"
                            GIT_SSH_COMMAND="ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no" git push git@github.com:SINRA12/testJenkinDeplymentK8.git HEAD:main
