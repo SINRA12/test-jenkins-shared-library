@@ -108,8 +108,8 @@ def call(Map config) {
                         echo "✅ External IP: ${externalIP}"
                         sh """
                             for i in {1..20}; do
-                                echo "Attempt \$i: http://${externalIP}/api1"
-                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api1)
+                                echo "Attempt \$i: http://${externalIP}/api"
+                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api)
                                 echo "Status: \$status_code"
                                 if [ "\$status_code" = "200" ]; then
                                     break
