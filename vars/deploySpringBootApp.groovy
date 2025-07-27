@@ -71,13 +71,14 @@ def call(Map config) {
                 steps {
                     script {
                         def imageTag = env.DOCKER_IMAGE_TAG
-                        echo "Updating Git repository with new image tag: ${imageTag}"
-                        
-                        
+                        // Extract the numeric part (e.g., 79 from sinra12/springboot-myfirstdocker:79)
+                        def numericTag = imageTag.split(":")[-1]
+                        echo "Updating Git repository with new image tag: ${numericTag}"                        
+                    
                         // Update the k8s YAML with the new image tag
                         sh """
                             cat k8s/k8s-deployment.yaml 
-                            sed -i 's|sinra12/springboot-myfirstdocker:[^ ]*|sinra12/springboot-myfirstdocker:${imageTag}|g' k8s/k8s-deployment.yaml
+                            sed -i 's|sinra12/springboot-myfirstdocker:[^ ]*|sinra12/springboot-myfirstdocker:${numericTag}|g' k8s/k8s-deployment.yaml
                             cat k8s/k8s-deployment.yaml 
                         """
                         
