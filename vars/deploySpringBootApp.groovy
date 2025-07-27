@@ -72,71 +72,36 @@ def call(Map config) {
                     }
                 }
             }
-            stage('Deploy to GKE') {
+            stage('Update Git Repository with New Image Tag') {
                 steps {
                     script {
                         def imageTag = env.DOCKER_IMAGE_TAG
-                        // Get cluster credentials
+                        echo "Updating Git repository with new image tag: ${imageTag}"
+                        
+                        // Update the k8s YAML with the new image tag
                         sh """
-                            gcloud container clusters get-credentials bisht-k8-cluster --region asia-south1 --project peerless-clock-464403-s3
+                            sed -i 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml
                         """
-                        // Replace image in repo YAML with the correct image tag (new or existing)
+                        
+                        // Commit and push the changes to the Git repository
                         sh """
-                            sed 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml > k8s/k8s-deployment-updated.yaml
-                        """
-                        // Apply updated manifest
-                        sh """
-                            kubectl apply -f k8s/k8s-deployment-updated.yaml
-                        """
-                        // Rollout check
-                        sh "kubectl rollout status deployment/jenkin-app --timeout=120s"
-                    }
-                }
-            }
-            stage('Health Check') {
-                steps {
-                    script {
-                        echo "🔍 Waiting for LoadBalancer external IP..."
-                        def externalIP = ""
-                        for (int i = 0; i < 20; i++) {
-                            externalIP = sh(script: "kubectl get svc jenkin-app-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-                            if (externalIP) {
-                                break
-                            }
-                            sleep 10
-                        }
-                        echo "✅ External IP: ${externalIP}"
-                        sh """
-                            for i in {1..20}; do
-                                echo "Attempt \$i: http://${externalIP}/api"
-                                status_code=\$(curl -o /dev/null -s -w "%{http_code}" http://${externalIP}/api)
-                                echo "Status: \$status_code"
-                                if [ "\$status_code" = "200" ]; then
-                                    break
-                                elif [ "\$status_code" = "404" ]; then
-                                    echo "❌ Error: Status code 404 received, failing the build."
-                                    error "Health check failed with status code 404."
-                                fi
-                                sleep 10
-                            done
+                            git config --global user.name "jenkins"
+                            git config --global user.email "jenkins@example.com"
+                            git add k8s/k8s-deployment.yaml
+                            git commit -m "Updated Docker image tag to ${imageTag}"
+                            git push origin HEAD:main
                         """
                     }
                 }
             }
         }
-       post {
-           failure {
-              echo "❌ Deployment failed. Rolling back to previous version..."
-        
-              // Trigger the rollback
-              sh "kubectl rollout undo deployment/jenkin-app"
-        
-             // Wait for the rollback to complete
-             sh "kubectl rollout status deployment/jenkin-app --timeout=120s"
-         }
-         success {
-             echo "✅ Application deployed successfully!"
-         }
-      }
+        post {
+            failure {
+                echo "❌ Deployment failed. Rolling back to previous version..."
+            }
+            success {
+                echo "✅ Application deployed successfully!"
+            }
+        }
     }
 }
