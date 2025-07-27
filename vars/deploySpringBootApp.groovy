@@ -86,6 +86,8 @@ def call(Map config) {
                          sh 'mkdir -p ~/.ssh'
                          sh 'ssh-keyscan github.com >> ~/.ssh/known_hosts'
                         // Commit and push the changes to the Git repository using SSH
+                         // Commit and push the changes to the Git repository
+                        sshagent(['github-ssh-key']) {
                         sh """
                             git config --global user.name "jenkins"
                             git config --global user.email "jenkins@example.com"
@@ -93,6 +95,7 @@ def call(Map config) {
                             git commit -m "Updated Docker image tag to ${imageTag}"
                             git push git@github.com:SINRA12/testJenkinDeplymentK8.git HEAD:main
                         """
+                       }
                     }
                 }
             }
