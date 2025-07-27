@@ -83,16 +83,14 @@ def call(Map config) {
                             sed -i 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml
                         """
                         
-                         // Commit and push the changes to the Git repository using Jenkins credentials
-                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_TOKEN')]) {
-                       sh """
-                        git config --global user.name "jenkins"
-                        git config --global user.email "jenkins@example.com"
-                        git add k8s/k8s-deployment.yaml
-                        git commit -m "Updated Docker image tag to ${imageTag}"
-                        git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/SINRA12/testJenkinDeplymentK8.git HEAD:main
-                    """
-                       }
+                        // Commit and push the changes to the Git repository using SSH
+                        sh """
+                            git config --global user.name "jenkins"
+                            git config --global user.email "jenkins@example.com"
+                            git add k8s/k8s-deployment.yaml
+                            git commit -m "Updated Docker image tag to ${imageTag}"
+                            git push git@github.com:SINRA12/testJenkinDeplymentK8.git HEAD:main
+                        """
                     }
                 }
             }
