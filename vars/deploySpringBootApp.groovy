@@ -79,6 +79,7 @@ def call(Map config) {
                         // Update the k8s YAML with the new image tag
                         sh """
                             sed -i 's|sinra12/springboot-myfirstdocker:latest|${imageTag}|g' k8s/k8s-deployment.yaml
+                            cat k8s/k8s-deployment.yaml 
                         """
                         
                         // Commit and push the changes to the Git repository using SSH
