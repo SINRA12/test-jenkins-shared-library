@@ -11,11 +11,6 @@ def call(Map config) {
         agent any
         stages {
             stage('Checkout') {
-                when {
-                    expression {
-                        !useExistingTag  // Only checkout code if building from source
-                    }
-                }
                 steps {
                     echo "📦 Checking out code"
                     deleteDir()
