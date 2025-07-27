@@ -77,7 +77,7 @@ def call(Map config) {
                         // Update the k8s YAML with the new image tag
                         sh """
                             cat k8s/k8s-deployment.yaml 
-                            sed -i 's|\\(sinra12/springboot-myfirstdocker:\\)[^ ]*|\\1${imageTag}|g' k8s/k8s-deployment.yaml
+                            sed -i 's|sinra12/springboot-myfirstdocker:[^ ]*|sinra12/springboot-myfirstdocker:${imageTag}|g' k8s/k8s-deployment.yaml
                             cat k8s/k8s-deployment.yaml 
                         """
                         
